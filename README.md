@@ -44,11 +44,16 @@ A high-performance, token-free, tactical geospatial dashboard built with **Svelt
 * **Visibility Adjustments:** Toggle the entire trail polyline, hide/reveal the upcoming path ahead of the drone (`Trail Mode`), and automatically save/load drone tracks to `LocalStorage`.
 
 ### 📍 3. Manual Tactical Pin Management
-* **Dynamic Canvas Billboards:** Generates custom tactical pins on-the-fly using an HTML5 Canvas helper. Requires **zero external images or network assets**.
+* **Dynamic Canvas Billboards:** Generates custom tactical pins on-the-fly using an HTML5 Canvas helper. Pins feature perfectly rounded **capsule-shaped labels** that automatically calculate optimal WCAG text contrast based on their background color. Requires **zero external images or network assets**.
 * **Depth-Immune Rendering:** Pins and labels bypass the Cesium depth-buffer completely (`disableDepthTestDistance: Infinity`), ensuring they are never occluded by high mountain peaks or terrain features.
-* **3D Tactical Poles:** Connects the ground ($0\text{m}$ elevation) to the billboard pin hovering at a constant $30,000\text{m}$ height with a semi-transparent, color-coded pole line, giving a high-tech tactical radar console aesthetic.
-* **Factions & Threats:** Categorize pins under **Default** (cyan), **Friendly** (green), **Target** (yellow), or **Danger** (red).
-* **Export Utilities:** Download current manual pins instantly to your system as either `.json` or `.csv` files.
+* **Terrain-Anchored 3D Poles:** Connects the exact rendered terrain elevation to the pin billboard with a semi-transparent pole line. Employs asynchronous terrain sampling (`sampleTerrainMostDetailed`) to completely eliminate LOD-based shifting/sliding at high zoom levels.
+* **Inline Sidebar Management:** Manage all active pins directly from an interactive sidebar list. Click a pin to instantly adjust its custom altitude, rename it, or change its color.
+* **Factions & Custom Colors:** Categorize pins under quick faction palettes (Cyan, Green, Yellow, Red) or use the **native OS Color Picker** to assign any hex color on the fly.
+* **Export & Import Utilities:** Download current manual pins instantly to your system as `.json` or `.csv` files, and **upload** them back seamlessly to restore previous tactical layouts.
+
+### ⏱️ 4. Temporal Data Scrubber & IST Timeline
+* **Native Optimization:** Utilizes Cesium's highly optimized native Animation and Timeline widgets for temporal scrubbing.
+* **IST Formatting:** The entire timeline and clock dial are custom-formatted to explicitly run in **Indian Standard Time (IST / UTC+5:30)** via dynamic JS offset injection, preventing cross-browser local timezone bugs.
 
 ### 🌐 4. Interactive Labeled Graticules (Gridlines)
 * **Meridians & Parallels:** Renders white gridlines every 10° of latitude and longitude, adapting line width dynamically for major 30° bounds.

@@ -1,62 +1,164 @@
-// ManualPin.js — user pins with terrain pole, save/load/download
+// ManualPin.js — user pins as dots with capsule labels, terrain-locked pole, save/load/download
 import * as Cesium from 'cesium';
 import { get } from 'svelte/store';
 import { manualPins, selectedManualPin, manualPinMode } from '../stores/mapStore.js';
 
-const PIN_ALT = 30_000;
+const DEFAULT_ALT = 0;
 const COLORS  = { default:'#00e5ff', danger:'#ff3d00', target:'#ffd600', friendly:'#00e676' };
 const LS_KEY  = 'geoops_pins';
 
-function buildCanvas(color) {
-  const c = document.createElement('canvas'); c.width=32; c.height=42;
-  const x = c.getContext('2d');
-  x.beginPath(); x.arc(16,14,12,0,Math.PI*2); x.fillStyle=color; x.fill();
-  x.strokeStyle='rgba(0,0,0,.55)'; x.lineWidth=2; x.stroke();
-  x.beginPath(); x.moveTo(10,22); x.lineTo(16,42); x.lineTo(22,22);
-  x.fillStyle=color; x.fill();
-  x.beginPath(); x.arc(16,14,5,0,Math.PI*2); x.fillStyle='rgba(0,0,0,.4)'; x.fill();
-  return c.toDataURL();
+const DOT_SIZE    = 14;
+const DOT_OUTLINE = 3;
+
+// ── WCAG contrast helper ──────────────────────────────────────────────────────
+function getLuminance(hex) {
+  const r = parseInt(hex.slice(1,3),16)/255;
+  const g = parseInt(hex.slice(3,5),16)/255;
+  const b = parseInt(hex.slice(5,7),16)/255;
+  const lin = c => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+  return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
+}
+function contrastTextColor(hex) {
+  return getLuminance(hex) > 0.35
+    ? Cesium.Color.fromCssColorString('#111111')
+    : Cesium.Color.WHITE;
 }
 
-export function addManualPin(viewer, { id, lon, lat, name='Pin', rep='default' }) {
-  const pinId = id || `mp-${Date.now()}`;
-  const color = COLORS[rep] || COLORS.default;
-  const ground = Cesium.Cartesian3.fromDegrees(lon, lat, 0);
-  const top    = Cesium.Cartesian3.fromDegrees(lon, lat, PIN_ALT);
+// ── Compute the WGS84 height that visually sits on the rendered terrain ───────
+// globe.getHeight() returns the geometric height; we scale by verticalExaggeration
+// because Cesium moves the terrain MESH vertices (not entity positions) by that factor,
+// so entity WGS84 height must equal geometric_h * exag to sit on the visual surface.
+function exaggeratedFloor(viewer, carto) {
+  const h    = viewer.scene.globe.getHeight(carto) ?? 0;
+  const exag = viewer.scene.verticalExaggeration ?? 1;
+  const rel  = viewer.scene.verticalExaggerationRelativeHeight ?? 0;
+  return (h - rel) * exag + rel;
+}
 
+// ── Canvas Pill Label Generator ───────────────────────────────────────────────
+// Cesium's native label doesn't support border-radius. We draw a true capsule 
+// to a canvas and use it as a billboard image for a perfect UI look.
+function buildCapsuleCanvas(text, bgCesColor, textCesColor) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const font = '11px "IBM Plex Mono", monospace';
+  
+  // High-DPI scaling for crisp text
+  const dpr = window.devicePixelRatio || 2;
+  
+  // Measure text
+  ctx.font = font;
+  const textWidth = ctx.measureText(text).width;
+  
+  // Capsule dimensions
+  const paddingX = 10;
+  const paddingY = 4;
+  const height = 11 + paddingY * 2; // ~19px
+  const width = textWidth + paddingX * 2;
+  const radius = height / 2;
+
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, width, height);
+
+  // Draw capsule path
+  ctx.fillStyle = bgCesColor.toCssColorString();
+  ctx.beginPath();
+  ctx.moveTo(radius, 0);
+  ctx.lineTo(width - radius, 0);
+  ctx.arc(width - radius, radius, radius, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(radius, height);
+  ctx.arc(radius, radius, radius, Math.PI / 2, -Math.PI / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Draw text
+  ctx.font = font;
+  ctx.fillStyle = textCesColor.toCssColorString();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, width / 2, height / 2 + 1);
+
+  return canvas;
+}
+
+export function addManualPin(viewer, { id, lon, lat, alt = DEFAULT_ALT, name = 'Pin', rep = 'default' }) {
+  const pinId    = id || `mp-${Date.now()}`;
+  const color    = COLORS[rep] || (rep.startsWith('#') ? rep : COLORS.default);
+  const cesColor = Cesium.Color.fromCssColorString(color);
+  const carto    = Cesium.Cartographic.fromDegrees(lon, lat);
+
+  // ── Scratch buffers (re-used per frame by CallbackProperty) ──────────────
+  const _groundScratch = new Cesium.Cartesian3();
+  const _topScratch    = new Cesium.Cartesian3();
+
+  // ── Pole — starts with per-frame CallbackProperty, then locks to sampled height ──
   const poleEntity = viewer.entities.add({
     id: `pole-${pinId}`,
     polyline: {
-      positions: [ground, top], width: 1.5,
-      material:          Cesium.Color.fromCssColorString(color).withAlpha(0.55),
-      depthFailMaterial: Cesium.Color.fromCssColorString(color).withAlpha(0.25),
-    }
+      positions: new Cesium.CallbackProperty(() => {
+        const floor = exaggeratedFloor(viewer, carto);
+        Cesium.Cartesian3.fromDegrees(lon, lat, floor,       undefined, _groundScratch);
+        Cesium.Cartesian3.fromDegrees(lon, lat, floor + alt, undefined, _topScratch);
+        return [_groundScratch, _topScratch];
+      }, false),
+      width: 1.5,
+      material:          cesColor.withAlpha(0.55),
+      depthFailMaterial: cesColor.withAlpha(0.25),
+    },
   });
 
+  // ── Dot + label — same: CallbackProperty initially, locked after sample ──
   const pinEntity = viewer.entities.add({
-    id: pinId, position: top,
-    properties: new Cesium.PropertyBag({ isManualPin:true, pinId, name, rep, lon, lat }),
-    billboard: {
-      image: buildCanvas(color), width:32, height:42,
-      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-      horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+    id:       pinId,
+    position: new Cesium.CallbackProperty(() =>
+      Cesium.Cartesian3.fromDegrees(lon, lat, exaggeratedFloor(viewer, carto) + alt), false),
+    properties: new Cesium.PropertyBag({ isManualPin: true, pinId, name, rep, lon, lat, alt }),
+
+    point: {
+      pixelSize:    DOT_SIZE,
+      color:        cesColor,
+      outlineColor: Cesium.Color.fromCssColorString('#000000').withAlpha(0.7),
+      outlineWidth: DOT_OUTLINE,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      eyeOffset: new Cesium.Cartesian3(0,0,-500),
-      scaleByDistance: new Cesium.NearFarScalar(1e3,1.2,8e6,0.5),
+      heightReference: Cesium.HeightReference.NONE,
     },
-    label: {
-      text: name, font:'12px "IBM Plex Mono",monospace',
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      fillColor: Cesium.Color.WHITE, outlineColor: Cesium.Color.BLACK, outlineWidth:2,
-      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-      pixelOffset: new Cesium.Cartesian2(0,-46),
+
+    // ── True Capsule Canvas Billboard (replaces native Label) ─────────────────
+    billboard: {
+      image: buildCapsuleCanvas(name, cesColor.withAlpha(0.88), contrastTextColor(color)),
+      verticalOrigin:   Cesium.VerticalOrigin.BOTTOM,
+      horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+      pixelOffset: new Cesium.Cartesian2(0, -(DOT_SIZE + DOT_OUTLINE + 2)),
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      eyeOffset: new Cesium.Cartesian3(0,0,-500),
-      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0,6e6),
+      eyeOffset: new Cesium.Cartesian3(0, 0, -500),
+      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 6e6),
+      translucencyByDistance:   new Cesium.NearFarScalar(4e5, 1.0, 6e6, 0.0),
     },
   });
 
-  const pin = { id:pinId, lon, lat, name, rep, poleEntity, pinEntity };
+  // ── Sample terrain at full resolution, then LOCK to static positions ──────
+  // This eliminates all LOD-based drift: once the authoritative height is known,
+  // the CallbackProperty is replaced with a fixed Cartesian3 that never moves.
+  Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, [carto])
+    .then(([sampled]) => {
+      const h     = sampled.height ?? 0;
+      const exag  = viewer.scene.verticalExaggeration ?? 1;
+      const rel   = viewer.scene.verticalExaggerationRelativeHeight ?? 0;
+      const floor = (h - rel) * exag + rel;
+
+      const groundPos = Cesium.Cartesian3.fromDegrees(lon, lat, floor);
+      const topPos    = Cesium.Cartesian3.fromDegrees(lon, lat, floor + alt);
+
+      // Replace dynamic CallbackProperty with a static, drift-free position
+      poleEntity.polyline.positions = [groundPos, topPos];
+      pinEntity.position            = topPos;
+    })
+    .catch(() => { /* keep CallbackProperty if terrain sampling fails */ });
+
+  const pin = { id: pinId, lon, lat, alt, name, rep, poleEntity, pinEntity };
   manualPins.update(p => [...p, pin]);
   return pin;
 }
@@ -68,7 +170,6 @@ export function removeManualPin(viewer, pinId) {
   viewer.entities.remove(pin.pinEntity);
   manualPins.update(p => p.filter(x => x.id !== pinId));
   selectedManualPin.set(null);
-  // Persist immediately so the pin doesn't reappear on refresh
   savePins();
 }
 
@@ -79,36 +180,71 @@ export function updateManualPin(viewer, pinId, changes) {
   viewer.entities.remove(pin.pinEntity);
   manualPins.update(p => p.filter(x => x.id !== pinId));
   const updated = addManualPin(viewer, { ...pin, ...changes });
-  // Delay store set so Svelte reactive statements don't immediately override editName
   setTimeout(() => selectedManualPin.set(updated), 0);
 }
 
 export function savePins() {
-  const data = get(manualPins).map(({ id,lon,lat,name,rep }) => ({ id,lon,lat,name,rep }));
+  const data = get(manualPins).map(({ id, lon, lat, alt, name, rep }) => ({ id, lon, lat, alt, name, rep }));
   localStorage.setItem(LS_KEY, JSON.stringify(data));
 }
 
 export function loadSavedPins(viewer) {
-  try { JSON.parse(localStorage.getItem(LS_KEY)||'[]').forEach(p => addManualPin(viewer, p)); }
-  catch {}
+  try {
+    JSON.parse(localStorage.getItem(LS_KEY) || '[]').forEach(p => addManualPin(viewer, p));
+  } catch {}
 }
 
 export function downloadPins(format) {
-  const rows = get(manualPins).map(({ id,lon,lat,name,rep }) =>
-    ({ id, lon, lat, name, color: rep }));
+  const rows = get(manualPins).map(({ id, lon, lat, alt, name, rep }) =>
+    ({ id, lon, lat, alt, name, color: rep }));
   let content, mime, ext;
   if (format === 'csv') {
-    content = 'id,lon,lat,name,color\n' +
-      rows.map(r => `${r.id},${r.lon},${r.lat},"${r.name}",${r.color}`).join('\n');
+    content = 'id,lon,lat,alt,name,color\n' +
+      rows.map(r => `${r.id},${r.lon},${r.lat},${r.alt},"${r.name}",${r.color}`).join('\n');
     mime = 'text/csv'; ext = 'csv';
   } else {
     content = JSON.stringify(rows, null, 2); mime = 'application/json'; ext = 'json';
   }
   const a = Object.assign(document.createElement('a'), {
-    href: URL.createObjectURL(new Blob([content],{type:mime})),
+    href: URL.createObjectURL(new Blob([content], { type: mime })),
     download: `geoops_pins.${ext}`,
   });
   a.click(); URL.revokeObjectURL(a.href);
+}
+
+export function uploadPinsFile(viewer, file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    try {
+      if (file.name.endsWith('.json')) {
+        const data = JSON.parse(text);
+        data.forEach(p => addManualPin(viewer, { ...p, rep: p.color || p.rep || 'default' }));
+      } else if (file.name.endsWith('.csv')) {
+        // Simple CSV parser for id,lon,lat,alt,"name",color
+        const lines = text.trim().split('\n').slice(1);
+        lines.forEach(line => {
+          const parts = line.split(',');
+          if (parts.length >= 6) {
+            const nameMatch = line.match(/"([^"]*)"/);
+            const name = nameMatch ? nameMatch[1] : parts[4];
+            const color = parts[parts.length - 1].trim();
+            addManualPin(viewer, {
+              id: parts[0],
+              lon: parseFloat(parts[1]),
+              lat: parseFloat(parts[2]),
+              alt: parseFloat(parts[3]),
+              name,
+              rep: color
+            });
+          }
+        });
+      }
+    } catch(err) {
+      console.error('Failed to parse uploaded pins', err);
+    }
+  };
+  reader.readAsText(file);
 }
 
 let _addHandler = null;
@@ -121,8 +257,9 @@ export function enterAddMode(viewer) {
     if (!pos) return;
     const c = Cesium.Cartographic.fromCartesian(pos);
     addManualPin(viewer, {
-      lon: Cesium.Math.toDegrees(c.longitude),
-      lat: Cesium.Math.toDegrees(c.latitude),
+      lon:  Cesium.Math.toDegrees(c.longitude),
+      lat:  Cesium.Math.toDegrees(c.latitude),
+      alt:  DEFAULT_ALT,
       name: `Point ${get(manualPins).length + 1}`,
     });
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);

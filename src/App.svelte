@@ -59,6 +59,8 @@
   let editName = "";
   let editAlt  = 0;   // metres, synced from selected pin
   let _editingId = null;
+  let panelVisible = true; // Controls visibility of the toolbox panel
+
   selectedManualPin.subscribe((pin) => {
     if (pin?.id !== _editingId) {
       _editingId = pin?.id ?? null;
@@ -180,13 +182,14 @@
 <div class="app">
   <Map bind:viewer on:ready={(e) => onViewerReady(e.detail)} />
 
-  <aside class="panel">
+  <aside class="panel" class:hidden={!panelVisible}>
     <!-- Logo + Home -->
     <div class="logo-row">
       <span class="logo">⬡ GEOOPS</span>
-      <button class="icon-btn" on:click={flyToIndia} title="Fly to India"
-        >🏠</button
-      >
+      <div style="display:flex; gap:4px">
+        <button class="icon-btn" on:click={flyToIndia} title="Fly to India">🏠</button>
+        <button class="icon-btn" on:click={() => panelVisible = false} title="Hide Toolbox">❯</button>
+      </div>
     </div>
 
     <!-- Spy toggle (always) -->
@@ -409,6 +412,13 @@
       </div>
     {/if}
   </aside>
+
+  <!-- Floating Open Button when Panel is Hidden -->
+  {#if !panelVisible}
+    <button class="panel-toggle-btn" on:click={() => panelVisible = true} title="Open Toolbox">
+      ☰
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -444,6 +454,29 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .panel.hidden {
+    transform: translateX(100%);
+  }
+
+  .panel-toggle-btn {
+    position: fixed;
+    right: 15px;
+    top: 15px;
+    z-index: 20;
+    background: rgba(4, 12, 24, 0.94);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    color: #00e5ff;
+    padding: 6px 10px;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    backdrop-filter: blur(12px);
+    transition: background 0.15s;
+  }
+  .panel-toggle-btn:hover {
+    background: rgba(0, 229, 255, 0.15);
   }
 
   .logo-row {
@@ -473,7 +506,7 @@
   .slabel {
     font-size: 8px;
     letter-spacing: 0.18em;
-    color: #446;
+    color: #fff;
     text-transform: uppercase;
   }
   .spy-row {

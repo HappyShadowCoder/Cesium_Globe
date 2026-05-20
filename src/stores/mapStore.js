@@ -25,6 +25,7 @@ export const manualPinMode     = writable(false);
 export const manualPins        = writable([]);
 export const selectedManualPin = writable(null);
 export const graticuleVisible  = writable(false);
+export const sunlightVisible   = writable(false);
 export const droneAddMode      = writable(false);
 export const trailMode         = writable(false);  // ON = hide path ahead of drone
 export const droneSatMode      = writable(false);  // spy circle follows drone, not mouse

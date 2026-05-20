@@ -21,6 +21,7 @@
     bubbleMapVisible,
     stateDataVisible,
     selectedStateData,
+    sunlightVisible,
   } from "./stores/mapStore.js";
   import {
     showBubbleMap,
@@ -81,10 +82,14 @@
     }
   });
 
-  // Graticule reactive toggle
   $: if (viewer) {
     if ($graticuleVisible) addGraticule(viewer);
     else removeGraticule(viewer);
+  }
+
+  // Sunlight reactive toggle
+  $: if (viewer && viewer.scene) {
+    viewer.scene.globe.enableLighting = $sunlightVisible;
   }
 
   function onViewerReady(v) {
@@ -300,10 +305,20 @@
         {$graticuleVisible ? "● ON" : "○ OFF"}
       </button>
     </div>
+    <div class="spy-row">
+      <span class="slabel">SUN</span>
+      <button
+        class:active={$sunlightVisible}
+        class="spy-btn"
+        on:click={() => sunlightVisible.update((v) => !v)}
+      >
+        {$sunlightVisible ? "● ON" : "○ OFF"}
+      </button>
+    </div>
 
     <!-- India Data Layer -->
-    <div class="grp india-grp">
-      <span class="slabel">INDIA DATA</span>
+    <details class="grp">
+      <summary class="slabel">INDIA DATA</summary>
       <div class="spy-row" style="margin-top:3px">
         <span class="slabel" style="font-size:7px;color:#5a8a9a">POP DENSITY</span>
         <button
@@ -339,7 +354,7 @@
           <span class="leg-dot ut-dot" style="margin-left:6px" />UT
         </div>
       {/if}
-    </div>
+    </details>
 
     {#if !$spyMode}
       <!-- City search -->
@@ -354,7 +369,7 @@
         {#if suggestions.length}
           <ul class="sugg">
             {#each suggestions as city}
-              <li onclick={() => selectCity(city)} onkeydown>
+              <li on:click={() => selectCity(city)}>
                 <b>{city.name}</b><small>{city.country}</small>
               </li>
             {/each}
@@ -363,8 +378,8 @@
       </div>
 
       <!-- Layer -->
-      <div class="grp">
-        <span class="slabel">LAYER</span>
+      <details class="grp" open>
+        <summary class="slabel">LAYER</summary>
         <div class="row">
           {#each ["sat", "topo", "auto"] as m}
             <button
@@ -373,11 +388,11 @@
             >
           {/each}
         </div>
-      </div>
+      </details>
 
       <!-- View -->
-      <div class="grp">
-        <span class="slabel">VIEW</span>
+      <details class="grp" open>
+        <summary class="slabel">VIEW</summary>
         <div class="row">
           {#each ["globe", "flat", "columbus"] as m}
             <button
@@ -386,22 +401,22 @@
             >
           {/each}
         </div>
-      </div>
+      </details>
 
       <!-- CSV -->
-      <div class="grp">
-        <span class="slabel">CSV</span>
+      <details class="grp">
+        <summary class="slabel">CSV</summary>
         <input
           type="file"
           accept=".csv"
           on:change={onCSVUpload}
           class="file-input"
         />
-      </div>
+      </details>
 
       <!-- Manual Points -->
-      <div class="grp">
-        <span class="slabel">POINTS</span>
+      <details class="grp">
+        <summary class="slabel">POINTS</summary>
         <div class="row">
           <button class:active={$manualPinMode} on:click={toggleAddMode}>
             {$manualPinMode ? "✕ Cancel" : "＋ Add"}
@@ -452,12 +467,12 @@
             {/each}
           </div>
         {/if}
-      </div>
+      </details>
     {/if}
 
     <!-- Camera — always visible -->
-    <div class="grp">
-      <span class="slabel">CAMERA</span>
+    <details class="grp">
+      <summary class="slabel">CAMERA</summary>
       <div class="row">
         {#each ["free", "satellite", "follow"] as m}
           <button
@@ -466,11 +481,11 @@
           >
         {/each}
       </div>
-    </div>
+    </details>
 
     <!-- Drone Path — always visible, independent of spy mode -->
-    <div class="grp">
-      <span class="slabel">DRONE PATH</span>
+    <details class="grp">
+      <summary class="slabel">DRONE PATH</summary>
       <div class="row">
         <button class:active={$droneAddMode} on:click={toggleDroneAdd}>
           {$droneAddMode ? "✕" : "＋WP"}
@@ -519,7 +534,7 @@
           {$droneSatMode ? "● ON" : "○ OFF"}
         </button>
       </div>
-    </div>
+    </details>
   </aside>
 
   <!-- Floating Open Button when Panel is Hidden -->
@@ -617,6 +632,34 @@
     letter-spacing: 0.18em;
     color: #fff;
     text-transform: uppercase;
+  }
+  summary.slabel {
+    cursor: pointer;
+    user-select: none;
+    list-style: none; /* Hide default arrow on some browsers */
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 229, 255, 0.1);
+    padding-bottom: 3px;
+    margin-bottom: 3px;
+    transition: color 0.15s;
+  }
+  summary.slabel::-webkit-details-marker {
+    display: none;
+  }
+  summary.slabel:hover {
+    color: #00e5ff;
+  }
+  summary.slabel::before {
+    content: "❯";
+    display: inline-block;
+    margin-right: 5px;
+    font-size: 7px;
+    color: #00e5ff;
+    transition: transform 0.2s;
+  }
+  details[open] > summary.slabel::before {
+    transform: rotate(90deg);
   }
   .spy-row {
     display: flex;

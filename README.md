@@ -69,6 +69,11 @@ A high-performance, token-free, tactical geospatial dashboard built with **Svelt
 * **Capital Data Pins & Interactive State Tooltips:** Instantly visualizes state/UT capitals as glowing tactical pins. Hovering over districts reveals dynamic tooltips with population counts. Clicking a state pin unlocks a glassmorphism data dialog summarizing Census 2011 gender and rural/urban splits via animated SVG donut charts.
 * **Camera Fly-In & Zoom Locks:** Cinematic camera routing instantly repositions altitude and pitch when examining specific state data, with zoom-locking to prevent accidental map displacement.
 
+### ☀️ 8. Dynamic UI & Environment Controls
+* **Accordion Dashboard Panels:** The entire right-side tool panel utilizes native HTML5 `<details>` components for a completely collapsible, zero-clutter tactical dashboard.
+* **Sunlight Day/Night Terminator:** Real-time globe lighting that accurately shades the dark side of the Earth based on the active timeline clock, producing immersive sunrise/sunset visual terminators.
+* **Restored Native Timeline:** Includes fixed native Svelte-binding logic enabling Cesium's fully-featured animation dials and timeline sliders, flawlessly formatted into IST.
+
 ---
 
 ## 🗺️ Which Maps & Elevation Servers Are Used?

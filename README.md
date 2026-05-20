@@ -55,14 +55,19 @@ A high-performance, token-free, tactical geospatial dashboard built with **Svelt
 * **Native Optimization:** Utilizes Cesium's highly optimized native Animation and Timeline widgets for temporal scrubbing.
 * **IST Formatting:** The entire timeline and clock dial are custom-formatted to explicitly run in **Indian Standard Time (IST / UTC+5:30)** via dynamic JS offset injection, preventing cross-browser local timezone bugs.
 
-### 🌐 4. Interactive Labeled Graticules (Gridlines)
+### 🌐 5. Interactive Labeled Graticules (Gridlines)
 * **Meridians & Parallels:** Renders white gridlines every 10° of latitude and longitude, adapting line width dynamically for major 30° bounds.
 * **Special Geodesics:** Highlights the **Equator**, **Tropic of Cancer**, and **Tropic of Capricorn** in dedicated visual color profiles (yellow, orange).
 * **Occlusion & Fade:** Grid labels disappear when on the opposite side of the globe and automatically fade out using distance display conditions to prevent UI clutter at high altitudes.
 
-### 🗺️ 5. Global City Search (Geocoder)
+### 🗺️ 6. Global City Search (Geocoder)
 * **High-Performance Offline Search:** Integrates a dataset of over 10,000+ world cities (`worldcities.csv`) parsed entirely in-browser.
 * **Fly-To Coordinate Triggers:** Typing a city offers instant autocomplete. Selecting one executes a cinematic fly-to animation and plots a tactical pin.
+
+### 🇮🇳 7. India Demographic Data & Bubble Map
+* **Dynamic Choropleth & Bubble Layers:** Render population density across India using an interactive bubble map (graduated circle sizes) coupled with high-performance `india.geojson` district choropleths.
+* **Capital Data Pins & Interactive State Tooltips:** Instantly visualizes state/UT capitals as glowing tactical pins. Hovering over districts reveals dynamic tooltips with population counts. Clicking a state pin unlocks a glassmorphism data dialog summarizing Census 2011 gender and rural/urban splits via animated SVG donut charts.
+* **Camera Fly-In & Zoom Locks:** Cinematic camera routing instantly repositions altitude and pitch when examining specific state data, with zoom-locking to prevent accidental map displacement.
 
 ---
 

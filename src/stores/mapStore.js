@@ -30,3 +30,8 @@ export const trailMode         = writable(false);  // ON = hide path ahead of dr
 export const droneSatMode      = writable(false);  // spy circle follows drone, not mouse
 export const trailVisible      = writable(true);   // show/hide trail polyline
 export const spyAnchorPos      = writable(null);   // {x,y} screen pos override for spy circle
+
+// ── India Data Layer ──────────────────────────────────────────────────────────
+export const bubbleMapVisible  = writable(false);  // population density choropleth + bubbles
+export const stateDataVisible  = writable(false);  // clickable state capital pins
+export const selectedStateData = writable(null);   // state data object for dialog

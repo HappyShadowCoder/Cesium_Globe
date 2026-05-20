@@ -17,7 +17,19 @@
     trailMode,
     droneSatMode,
     trailVisible,
+    controlPoints,
+    bubbleMapVisible,
+    stateDataVisible,
+    selectedStateData,
   } from "./stores/mapStore.js";
+  import {
+    showBubbleMap,
+    hideBubbleMap,
+    showStatePins,
+    hideStatePins,
+    STATE_COORDS,
+  } from "./components/IndiaLayer.js";
+  import StateDialog from "./components/StateDialog.svelte";
   import {
     startPlayback,
     stopPlayback,
@@ -128,6 +140,16 @@
     });
   }
 
+  function clearWaypoints() {
+    stopPlayback();
+    playbackState.set("idle");
+    controlPoints.set([]);
+    if (viewer) {
+      resetPlayback(viewer);
+      drawDronePath(viewer);
+    }
+  }
+
   async function onCSVUpload(e) {
     const file = e.target.files[0];
     if (!file || !viewer) return;
@@ -177,10 +199,55 @@
     target: "#ffd600",
     friendly: "#00e676",
   };
+
+  // ── India Layer reactive toggles ────────────────────────────────────────
+  $: if (viewer) {
+    if ($bubbleMapVisible) showBubbleMap(viewer);
+    else hideBubbleMap(viewer);
+  }
+  $: if (viewer) {
+    if ($stateDataVisible) showStatePins(viewer);
+    else hideStatePins(viewer);
+  }
+
+  // ── Camera fly-in + zoom lock when state dialog opens ────────────────────
+  $: if (viewer) {
+    const ctrl = viewer.scene.screenSpaceCameraController;
+    if ($selectedStateData) {
+      // Fly to capital, offset west so dialog doesn't cover the state
+      const coord = STATE_COORDS[$selectedStateData.name];
+      if (coord) {
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(
+            coord.lon - 1.8,   // shift west to keep state left-of-centre
+            coord.lat - 0.4,
+            280_000,           // 280 km altitude
+          ),
+          orientation: {
+            heading: 0,
+            pitch:   Cesium.Math.toRadians(-42),  // 42° angle down
+            roll:    0,
+          },
+          duration: 1.8,
+          easingFunction: Cesium.EasingFunction.QUINTIC_IN_OUT,
+        });
+      }
+      // Lock zoom while dialog is open
+      ctrl.zoomEventTypes = [];
+    } else {
+      // Unlock zoom (restore Cesium defaults)
+      ctrl.zoomEventTypes = [
+        Cesium.CameraEventType.RIGHT_DRAG,
+        Cesium.CameraEventType.WHEEL,
+        Cesium.CameraEventType.PINCH,
+      ];
+    }
+  }
 </script>
 
 <div class="app">
   <Map bind:viewer on:ready={(e) => onViewerReady(e.detail)} />
+  <StateDialog />
 
   <aside class="panel" class:hidden={!panelVisible}>
     <!-- Logo + Home -->
@@ -232,6 +299,46 @@
       >
         {$graticuleVisible ? "● ON" : "○ OFF"}
       </button>
+    </div>
+
+    <!-- India Data Layer -->
+    <div class="grp india-grp">
+      <span class="slabel">INDIA DATA</span>
+      <div class="spy-row" style="margin-top:3px">
+        <span class="slabel" style="font-size:7px;color:#5a8a9a">POP DENSITY</span>
+        <button
+          class="spy-btn"
+          class:active={$bubbleMapVisible}
+          title="Toggle population density choropleth + bubble map"
+          on:click={() => bubbleMapVisible.update((v) => !v)}
+        >
+          {$bubbleMapVisible ? "● ON" : "○ OFF"}
+        </button>
+      </div>
+      {#if $bubbleMapVisible}
+        <div class="density-legend">
+          <span style="color:#22cc44">Low</span>
+          <div class="grad-bar" />
+          <span style="color:#ff2222">High</span>
+        </div>
+      {/if}
+      <div class="spy-row" style="margin-top:3px">
+        <span class="slabel" style="font-size:7px;color:#5a8a9a">STATE DATA</span>
+        <button
+          class="spy-btn"
+          class:active={$stateDataVisible}
+          title="Toggle state capital pins — click a pin to view census data"
+          on:click={() => stateDataVisible.update((v) => !v)}
+        >
+          {$stateDataVisible ? "● ON" : "○ OFF"}
+        </button>
+      </div>
+      {#if $stateDataVisible}
+        <div class="india-legend">
+          <span class="leg-dot state-dot" />State capital
+          <span class="leg-dot ut-dot" style="margin-left:6px" />UT
+        </div>
+      {/if}
     </div>
 
     {#if !$spyMode}
@@ -346,71 +453,73 @@
           </div>
         {/if}
       </div>
-    {:else}
-      <!-- Camera — spy mode only -->
-      <div class="grp">
-        <span class="slabel">CAMERA</span>
-        <div class="row">
-          {#each ["free", "satellite", "follow"] as m}
-            <button
-              class:active={$cameraMode === m}
-              on:click={() => cameraMode.set(m)}>{m}</button
-            >
-          {/each}
-        </div>
-      </div>
-
-      <div class="grp">
-        <span class="slabel">DRONE PATH</span>
-        <div class="row">
-          <button class:active={$droneAddMode} on:click={toggleDroneAdd}>
-            {$droneAddMode ? "✕" : "＋WP"}
-          </button>
-          <button on:click={togglePlay}
-            >{$playbackState === "playing" ? "⏸" : "▶"}</button
-          >
-          <button
-            on:click={() => {
-              resetPlayback(viewer);
-              playbackState.set("idle");
-            }}>↺</button
-          >
-          <button on:click={() => viewer && drawDronePath(viewer)}>⟳</button>
-          <button on:click={saveDronePath}>💾</button>
-        </div>
-        <div class="spy-row" style="margin-top:4px">
-          <span class="slabel">PATH AHEAD</span>
-          <button
-            class="spy-btn"
-            class:active={$trailMode}
-            on:click={() => trailMode.update((v) => !v)}
-          >
-            {$trailMode ? "● Hidden" : "○ Visible"}
-          </button>
-        </div>
-        <div class="spy-row" style="margin-top:2px">
-          <span class="slabel">TRAIL LINE</span>
-          <button
-            class="spy-btn"
-            class:active={!$trailVisible}
-            on:click={() => trailVisible.update((v) => !v)}
-          >
-            {$trailVisible ? "○ Visible" : "● Hidden"}
-          </button>
-        </div>
-        <div class="spy-row" style="margin-top:2px">
-          <span class="slabel">DRONE SAT</span>
-          <button
-            class="spy-btn"
-            class:active={$droneSatMode}
-            title="Spy circle locks to drone position (shows SAT beneath drone)"
-            on:click={() => droneSatMode.update((v) => !v)}
-          >
-            {$droneSatMode ? "● ON" : "○ OFF"}
-          </button>
-        </div>
-      </div>
     {/if}
+
+    <!-- Camera — always visible -->
+    <div class="grp">
+      <span class="slabel">CAMERA</span>
+      <div class="row">
+        {#each ["free", "satellite", "follow"] as m}
+          <button
+            class:active={$cameraMode === m}
+            on:click={() => cameraMode.set(m)}>{m}</button
+          >
+        {/each}
+      </div>
+    </div>
+
+    <!-- Drone Path — always visible, independent of spy mode -->
+    <div class="grp">
+      <span class="slabel">DRONE PATH</span>
+      <div class="row">
+        <button class:active={$droneAddMode} on:click={toggleDroneAdd}>
+          {$droneAddMode ? "✕" : "＋WP"}
+        </button>
+        <button on:click={togglePlay}
+          >{$playbackState === "playing" ? "⏸" : "▶"}</button
+        >
+        <button
+          on:click={() => {
+            resetPlayback(viewer);
+            playbackState.set("idle");
+          }}>↺</button
+        >
+        <button on:click={() => viewer && drawDronePath(viewer)}>⟳</button>
+        <button on:click={saveDronePath}>💾</button>
+        <button class="del" title="Remove all waypoints" on:click={clearWaypoints}>🗑 WP</button>
+      </div>
+      <div class="spy-row" style="margin-top:4px">
+        <span class="slabel">PATH AHEAD</span>
+        <button
+          class="spy-btn"
+          class:active={$trailMode}
+          on:click={() => trailMode.update((v) => !v)}
+        >
+          {$trailMode ? "● Hidden" : "○ Visible"}
+        </button>
+      </div>
+      <div class="spy-row" style="margin-top:2px">
+        <span class="slabel">TRAIL LINE</span>
+        <button
+          class="spy-btn"
+          class:active={!$trailVisible}
+          on:click={() => trailVisible.update((v) => !v)}
+        >
+          {$trailVisible ? "○ Visible" : "● Hidden"}
+        </button>
+      </div>
+      <div class="spy-row" style="margin-top:2px">
+        <span class="slabel">DRONE SAT</span>
+        <button
+          class="spy-btn"
+          class:active={$droneSatMode}
+          title="Spy circle locks to drone position (shows SAT beneath drone)"
+          on:click={() => droneSatMode.update((v) => !v)}
+        >
+          {$droneSatMode ? "● ON" : "○ OFF"}
+        </button>
+      </div>
+    </div>
   </aside>
 
   <!-- Floating Open Button when Panel is Hidden -->
@@ -807,4 +916,45 @@
     color: #cef;
     font-family: "IBM Plex Mono", monospace;
   }
+
+  /* ── India Data Layer ────────────────────────────────────────────────────── */
+  .india-grp {
+    border-top: 1px solid rgba(0,229,255,0.1);
+    padding-top: 7px;
+  }
+  .density-legend {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    font-size: 8px;
+    font-family: inherit;
+  }
+  .grad-bar {
+    flex: 1;
+    height: 5px;
+    border-radius: 3px;
+    background: linear-gradient(90deg,
+      hsl(120,85%,52%) 0%,
+      hsl(60,85%,52%)  40%,
+      hsl(30,85%,52%)  65%,
+      hsl(0,85%,52%)   100%);
+    box-shadow: 0 0 6px rgba(0,0,0,0.4);
+  }
+  .india-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 8px;
+    margin-top: 4px;
+    color: #7dd;
+  }
+  .leg-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .state-dot { background: #00e5ff; outline: 2px solid #0080ff; outline-offset: 1px; }
+  .ut-dot    { background: #ffd600; outline: 2px solid #ff8800; outline-offset: 1px; }
 </style>
